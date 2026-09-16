@@ -1,0 +1,18 @@
+1. Para averiguar el tamaño del archivo a bajar:
+
+URL=https://mawi.wide.ad.jp/mawi/samplepoint-F/2018/201812031400.pcap.gz
+curl -sIL "$URL" | grep -i '^content-length:' \
+  | awk '{print $2}' | tr -d '\r' | numfmt --to=iec --suffix=B
+
+2. Para efectivamente bajar el archivo, ejecutar:
+
+URL=https://mawi.wide.ad.jp/mawi/samplepoint-F/2018/201812031400.pcap.gz
+
+curl -L -C - -O "$URL"
+
+3. Otras datasets similares: La ruta sigue el patrón samplepoint-F/<AÑO>/<AAAAMMDDHHMM>, donde la hora es siempre 14:00 hora local. La traza de referencia sugerida es la del 3 de diciembre de 2018:
+    https://mawi.wide.ad.jp/mawi/samplepoint-F/2018/201812031400.pcap.gz
+
+4. Observacion
+Las trazas son reales de backbone del https://mawi.wide.ad.jp/mawi/ (MAWI Working Group Traffic Archive) del proyecto WIDE. Son de descarga directa, sin registro. El punto de captura a utilizar es samplepoint-F, que monitorea el enlace de tránsito de Tokio hacia un proveedor de nivel superior; cada traza diaria cubre 15 minutos de tráfico y no contiene carga útil de la capa de transporte.
+

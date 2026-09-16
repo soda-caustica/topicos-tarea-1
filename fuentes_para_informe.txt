@@ -1,0 +1,5 @@
+https://www.sciencedirect.com/science/article/pii/0022000079900448?via%3Dihub HASHING UNIVERSAL
+
+https://www.browserling.com/tools/prime-numbers OBTENER PRIMOS
+(4294967387)
+
