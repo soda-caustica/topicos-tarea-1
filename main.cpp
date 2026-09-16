@@ -1,4 +1,4 @@
-#include "count_min.hpp"
+#include "count_sketch.hpp"
 #include <iostream>
 
 int main(){
@@ -7,9 +7,9 @@ int main(){
   int arr[]  = {1,2,1,1,3,2,1,1,2,3,4,2};
   int arr2[] = {3,1,2,1,2,1,1,1,2,3,4,1};
 
-  CountMin sketch1 = CountMin(d,w);
-  CountMin sketch2 = CountMin(d,w);
-  CountMin sketchCombinado = CountMin(d,w);
+  CountSketch sketch1 = CountSketch(d,w);
+  CountSketch sketch2 = CountSketch(d,w);
+  CountSketch sketchCombinado = CountSketch(d,w);
 
   for(int i = 0; i < 12; i++){
     sketch1.count(arr[i]);
