@@ -18,7 +18,7 @@ private:
   // d < PRIMO. Es una implementacion de la primera familia universal mencionada
   // en el articulo de familias universales.
   // La n-esima funcion hash seria \x -> int hash(n,x).
-  int hash(long d, long clave) { return (m * clave + d) % PRIMO; }
+  long hash(long d, long clave) { return (m * clave + d) % PRIMO; }
   int signHash(long d, long clave) { return hash(d, clave) % 2 == 1 ? -1 : 1; }
 
 public:
@@ -39,7 +39,7 @@ public:
     }
   }
 
-  float get(uint32_t clave) {
+  int get(uint32_t clave) {
     std::vector<int> arr;
     arr.reserve(depth);
     for (int i = 0; i < depth; i++) {
@@ -53,7 +53,7 @@ public:
       return arr[mid];
     } else{
       std::sort(arr.begin(),arr.end());
-      return (arr[mid-1]+arr[mid])/2.0;
+      return (arr[mid-1]+arr[mid])/2;
     }
   }
 

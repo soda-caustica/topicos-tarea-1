@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <ios>
 #include <iostream>
 #include <limits>
@@ -70,10 +71,13 @@ private:
     uint64_t estimate = sketch_principal->get(ip);
     int64_t delta = estimate - prevEstimate;
 
-    output << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
-           << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6) << ','
-           << intToIP(ip) << ',' << N << ',' << threshold << ',' << estimate
-           << ',' << (estimate >= threshold ? 1 : 0) << ',' << delta << '\n';
+    output << std::fixed << std::setprecision(0)
+           << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
+           << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6)
+           << ',' << intToIP(ip) << ',' << N << ',' << threshold << ','
+           << static_cast<long long>(estimate) << ','
+           << (estimate >= threshold ? 1 : 0) << ','
+           << static_cast<long long>(delta) << '\n';
 
     prevEstimate = estimate;
   }
@@ -101,6 +105,7 @@ public:
     }
     inicioRanura = paqueteActual.ts_us;
     t0 = inicioRanura;
+    output << std::fixed << std::setprecision(0);
     output << "win,tau_us,t_rel_s,key,N,threshold,estimate_f,estimate_hh,"
               "estimate_delta\n";
   }

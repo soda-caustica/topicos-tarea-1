@@ -1,3 +1,4 @@
+cmp.py
 *.out
 *.bin
 *.pcap
