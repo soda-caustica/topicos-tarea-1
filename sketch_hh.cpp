@@ -1,4 +1,4 @@
-#include "count_min.hpp"
+#include "count_sketch.hpp"
 #include <arpa/inet.h>
 #include <cmath>
 #include <cstdint>
@@ -7,10 +7,11 @@
 #include <fstream>
 #include <ios>
 #include <iostream>
+#include <limits>
 #include <netinet/in.h>
 #include <string>
 
-class Detector_Min {
+class Detector_Sketch {
 private:
   struct Paquete {
     uint64_t ts_us;
@@ -24,8 +25,8 @@ private:
   };
   static const int NUM_SUBVENTANAS = 6;
   static const int TAMAÑO_SUBVENTANA = 10000000; // 10 segundos
-  CountMin *sketch_principal;
-  CountMin *subsketches[NUM_SUBVENTANAS];
+  CountSketch *sketch_principal;
+  CountSketch *subsketches[NUM_SUBVENTANAS];
   int contadores[NUM_SUBVENTANAS] = {0};
   uint64_t t0 = 0;
   uint64_t inicioRanura = 0;
@@ -87,12 +88,12 @@ private:
   }
 
 public:
-  Detector_Min(int d, int w, std::ifstream &infile, std::ofstream &outfile,
+  Detector_Sketch(int d, int w, std::ifstream &infile, std::ofstream &outfile,
                bool ddos, uint32_t ip)
       : input(infile), output(outfile), ddos(ddos), ip(ip) {
-    sketch_principal = new CountMin(d, w);
+    sketch_principal = new CountSketch(d, w);
     for (int i = 0; i < 6; i++) {
-      subsketches[i] = new CountMin(d, w);
+      subsketches[i] = new CountSketch(d, w);
     }
     if (!obtenerPaquete()) {
       std::cout << "No se pudo leer el primer paquete";
@@ -153,8 +154,8 @@ int main(int argc, char **argv) {
   bool scan = atoi(argv[5]);
   traza.open(argv[1], std::ios::binary | std::ios::in);
   csv.open(argv[6]);
-  Detector_Min det =
-      Detector_Min(atoi(argv[3]), atoi(argv[4]), traza, csv, scan, ip);
+  Detector_Sketch det =
+      Detector_Sketch(atoi(argv[3]), atoi(argv[4]), traza, csv, scan, ip);
   while (det.procesar()) {
   }
   traza.close();
