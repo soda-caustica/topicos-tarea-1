@@ -1,2 +1,6 @@
 *.out
-
+*.bin
+*.pcap
+*/pcap2bin
+exact_hh
+*.csv
