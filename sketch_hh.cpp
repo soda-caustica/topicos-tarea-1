@@ -1,4 +1,4 @@
-#include "count_sketch.hpp"
+#include "sketches/count_sketch.hpp"
 #include <arpa/inet.h>
 #include <cmath>
 #include <cstdint>
@@ -8,7 +8,6 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
-#include <limits>
 #include <netinet/in.h>
 #include <string>
 
@@ -35,6 +34,7 @@ private:
   char ranuraActual = 0;
   std::ifstream &input;
   std::ofstream &output;
+  std::ifstream &exacto; // stream con resultados exactos (csv)
   Paquete paqueteActual = {};
   bool ddos;
   uint64_t prevEstimate = 0;
@@ -53,7 +53,9 @@ private:
   }
 
   void cambiarVentana() {
-    if (contadores[NUM_SUBVENTANAS - 1] == 0) //Revisamos si las 6 subventanas fueron rellenadas antes de escribir los resultados
+    if (contadores[NUM_SUBVENTANAS - 1] ==
+        0) // Revisamos si las 6 subventanas fueron rellenadas antes de escribir
+           // los resultados
       return;
     escribirResultados();
     *sketch_principal -= *subsketches[ranuraActual];
@@ -71,14 +73,45 @@ private:
     uint64_t estimate = sketch_principal->get(ip);
     int64_t delta = estimate - prevEstimate;
 
-    output << std::fixed << std::setprecision(0)
-           << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
-           << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6)
-           << ',' << intToIP(ip) << ',' << N << ',' << threshold << ','
-           << static_cast<long long>(estimate) << ','
-           << (estimate >= threshold ? 1 : 0) << ','
-           << static_cast<long long>(delta) << '\n';
+    // Leer siguiente línea del csv exacto y obtener la columna N (índice 4)
+    uint64_t N_exact = 0;
+    uint64_t f_exact = 0;
+    if (exacto.good()) {
+      std::string line;
+      if (std::getline(exacto, line)) {
+        if (!line.empty()) {
+          std::stringstream ss(line);
+          std::string tok;
+          int col = 0;
+          while (std::getline(ss, tok, ',')) {
+            if (col == 6) {
+              try {
+                f_exact = std::stoull(tok);
+              } catch (...) {
+                f_exact = 0;
+              }
+              break;
+            }
+            if (col == 4) {
+              try {
+                N_exact = std::stoull(tok);
+              } catch (...) {
+                N_exact = 0;
+              }
+              break;
+            }
+            col++;
+          }
+        }
+      }
+    }
 
+    output << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
+           << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6) << ','
+           << intToIP(ip) << ',' << N << ',' << threshold << ',' << estimate
+           << ',' << (estimate >= threshold ? 1 : 0) << ',' << delta << ','
+           << (N == N_exact ? 1 : 0) << f_exact - estimate
+           << ((double)f_exact - estimate) / (double)estimate << '\n';
     prevEstimate = estimate;
   }
 
@@ -93,8 +126,8 @@ private:
 
 public:
   Detector_Sketch(int d, int w, std::ifstream &infile, std::ofstream &outfile,
-               bool ddos, uint32_t ip)
-      : input(infile), output(outfile), ddos(ddos), ip(ip) {
+                  bool ddos, uint32_t ip, std::ifstream &exacto_csv)
+      : input(infile), output(outfile), ddos(ddos), ip(ip), exacto(exacto_csv) {
     sketch_principal = new CountSketch(d, w);
     for (int i = 0; i < 6; i++) {
       subsketches[i] = new CountSketch(d, w);
@@ -105,9 +138,13 @@ public:
     }
     inicioRanura = paqueteActual.ts_us;
     t0 = inicioRanura;
-    output << std::fixed << std::setprecision(0);
+    // descartar encabezado del csv exacto
+    std::string header;
+    if (exacto.good())
+      std::getline(exacto, header);
+
     output << "win,tau_us,t_rel_s,key,N,threshold,estimate_f,estimate_hh,"
-              "estimate_delta\n";
+              "estimate_delta,matches_exact_n,abs_err,rel_err\n";
   }
 
   bool procesar() {
@@ -132,7 +169,7 @@ public:
     for (int i = 0; i < NUM_SUBVENTANAS; i++) {
       sum += contadores[i];
     }
-    sum *= phi;
+    sum = ceil(phi * (double)sum);
     return sketch_principal->get(ip) > sum;
   }
 };
@@ -146,23 +183,29 @@ uint32_t ip_to_u32(const char *ip) {
 }
 
 int main(int argc, char **argv) {
-  if (argc != 7) {
+  if (argc != 8) {
     std::cout << "Uso: " << argv[0]
               << " <traza> <ip> <d> <w> <0 para scan, 1 para ddos> <archivo "
+                 "con resultados exactos> <archivo "
                  "csv para resultados>\n";
     exit(EXIT_FAILURE);
   }
   std::ifstream traza;
   std::ofstream csv;
+  std::ifstream exacto;
 
   uint32_t ip = ip_to_u32(argv[2]);
   bool scan = atoi(argv[5]);
   traza.open(argv[1], std::ios::binary | std::ios::in);
-  csv.open(argv[6]);
-  Detector_Sketch det =
-      Detector_Sketch(atoi(argv[3]), atoi(argv[4]), traza, csv, scan, ip);
+  exacto.open(argv[6]);
+  csv.open(argv[7]);
+
+  Detector_Sketch det = Detector_Sketch(atoi(argv[3]), atoi(argv[4]), traza,
+                                        csv, scan, ip, exacto);
+
   while (det.procesar()) {
   }
   traza.close();
   csv.close();
+  exacto.close();
 }
