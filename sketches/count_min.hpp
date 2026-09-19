@@ -9,7 +9,7 @@ private:
   int width;
   int **sketch;
   long PRIMO = 4294967387;
-  int m = 1972;
+  uint16_t m;
 
   // Definimos una familia universal de funciones hash así, funciona siempre que
   // d < PRIMO. Es una implementacion de la primera familia universal mencionada
@@ -18,7 +18,7 @@ private:
   int hash(long d, long clave) { return ((m * clave + d) % PRIMO) % width; }
 
 public:
-  CountMin(int d, int w) : depth{d}, width{w} {
+  CountMin(int d, int w, uint16_t m) : depth{d}, width{w}, m{m} {
     sketch = new int *[d];
     for (int i = 0; i < d; i++) {
       sketch[i] = new int[w];

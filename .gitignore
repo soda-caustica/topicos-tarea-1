@@ -5,3 +5,6 @@ cmp.py
 */pcap2bin
 exact_hh
 *.csv
+__pycache__/
+*.jpg
+*.json

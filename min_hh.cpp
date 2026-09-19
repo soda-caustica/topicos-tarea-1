@@ -70,8 +70,10 @@ private:
     }
     uint64_t threshold = std::ceil(0.01 * double(N));
 
-    uint64_t estimate = sketch_principal->get(ip);
-    int64_t delta = estimate - prevEstimate;
+    int raw_estimate = sketch_principal->get(ip);
+    uint64_t estimate = raw_estimate > 0 ? raw_estimate : 0;
+    int64_t delta =
+        static_cast<int64_t>(estimate) - static_cast<int64_t>(prevEstimate);
 
     // Leer siguiente línea del csv exacto y obtener la columna N (índice 4)
     uint64_t N_exact = 0;
@@ -84,19 +86,18 @@ private:
           std::string tok;
           int col = 0;
           while (std::getline(ss, tok, ',')) {
-            if (col == 6) {
-              try {
-                f_exact = std::stoull(tok);
-              } catch (...) {
-                f_exact = 0;
-              }
-              break;
-            }
             if (col == 4) {
               try {
                 N_exact = std::stoull(tok);
               } catch (...) {
                 N_exact = 0;
+              }
+            }
+            if (col == 6) {
+              try {
+                f_exact = std::stoull(tok);
+              } catch (...) {
+                f_exact = 0;
               }
               break;
             }
@@ -109,9 +110,15 @@ private:
     output << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
            << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6) << ','
            << intToIP(ip) << ',' << N << ',' << threshold << ',' << estimate
-           << ',' << (estimate >= threshold ? 1 : 0) << ',' << delta << ','
-           << (N == N_exact ? 1 : 0) << f_exact - estimate
-           << ((double)f_exact - estimate) / (double)estimate << '\n';
+           << ',' << revisarHH(ip, 0.01) << ',' << delta << ','
+           << (N == N_exact ? 1 : 0) << ','
+           << (f_exact > estimate ? f_exact - estimate : estimate - f_exact)
+           << ','
+           << (estimate == 0 ? 0.0
+                             : (f_exact > estimate ? f_exact - estimate
+                                                   : estimate - f_exact) /
+                                   (double)estimate)
+           << '\n';
 
     prevEstimate = estimate;
   }
@@ -129,9 +136,10 @@ public:
   Detector_Min(int d, int w, std::ifstream &infile, std::ofstream &outfile,
                bool ddos, uint32_t ip, std::ifstream &exacto_csv)
       : input(infile), output(outfile), ddos(ddos), ip(ip), exacto(exacto_csv) {
-    sketch_principal = new CountMin(d, w);
+    uint16_t gen = rand() % INT16_MAX;
+    sketch_principal = new CountMin(d, w, gen);
     for (int i = 0; i < 6; i++) {
-      subsketches[i] = new CountMin(d, w);
+      subsketches[i] = new CountMin(d, w, gen);
     }
     if (!obtenerPaquete()) {
       std::cout << "No se pudo leer el primer paquete";
@@ -155,6 +163,9 @@ public:
   }
 
   bool procesar() {
+    if (!obtenerPaquete()) {
+      return false;
+    }
     while (paqueteActual.ts_us > inicioRanura + TAMAÑO_SUBVENTANA) {
       ranuraActual = (ranuraActual + 1) % NUM_SUBVENTANAS;
       inicioRanura += TAMAÑO_SUBVENTANA;
@@ -164,10 +175,6 @@ public:
     sketch_principal->count(ip_addr);
     subsketches[ranuraActual]->count(ip_addr);
     contadores[ranuraActual]++;
-
-    if (!obtenerPaquete()) {
-      return false;
-    }
     return true;
   }
 
@@ -191,6 +198,7 @@ uint32_t ip_to_u32(const char *ip) {
 }
 
 int main(int argc, char **argv) {
+  srand (time(NULL));
   if (argc != 8) {
     std::cout << "Uso: " << argv[0]
               << " <traza> <ip> <d> <w> <0 para scan, 1 para ddos> <archivo "

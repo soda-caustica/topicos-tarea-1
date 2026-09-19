@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
+#include <sys/types.h>
 #include <vector>
 class CountSketch {
 private:
@@ -12,17 +13,18 @@ private:
   int width;
   int **sketch;
   long PRIMO = 4294967387;
-  int m = 1972;
+  uint16_t m;
+  uint16_t m2;
 
   // Definimos una familia universal de funciones hash así, funciona siempre que
   // d < PRIMO. Es una implementacion de la primera familia universal mencionada
   // en el articulo de familias universales.
   // La n-esima funcion hash seria \x -> int hash(n,x).
-  long hash(long d, long clave) { return (m * clave + d) % PRIMO; }
-  int signHash(long d, long clave) { return hash(d, clave) % 2 == 1 ? -1 : 1; }
+  long hash(long d, long clave) { return (m * clave + d) % PRIMO % width; }
+  int signHash(long d, long clave) { return (m2 * clave + d) % PRIMO % 2 == 1 ? -1 : 1; }
 
 public:
-  CountSketch(int d, int w) : depth{d}, width{w} {
+  CountSketch(int d, int w, uint16_t m1, uint16_t m2) : depth{d}, width{w}, m{m1}, m2{m2} {
     sketch = new int *[d];
     for (int i = 0; i < d; i++) {
       sketch[i] = new int[w];
@@ -35,7 +37,7 @@ public:
   /// que la funcion hash corra solo una vez
   void count(uint32_t clave) {
     for (int i = 0; i < depth; i++) {
-      sketch[i][hash(i, clave) % width] += signHash(i, clave);
+      sketch[i][hash(i, clave)] += signHash(i, clave);
     }
   }
 
@@ -43,7 +45,7 @@ public:
     std::vector<int> arr;
     arr.reserve(depth);
     for (int i = 0; i < depth; i++) {
-      arr.push_back(sketch[i][hash(i, clave) % width]*signHash(i,clave));
+      arr.push_back(sketch[i][hash(i, clave)]*signHash(i,clave));
     }
     int mid = arr.size()/2;
 
