@@ -63,9 +63,8 @@ public:
   // codigo, todos los sketches de esta clase son compatibles si sus dimensiones
   // son iguales
   CountSketch &operator+=(const CountSketch &rhs) {
-    if (depth != rhs.depth || width != rhs.width) {
-      throw std::invalid_argument("Se intentaron sumar sketches incompatibles, "
-                                  "revise las dimensiones de ambos");
+    if (depth != rhs.depth || width != rhs.width || m2 != rhs.m2 || m != rhs.m) {
+      throw std::invalid_argument("Se intentaron sumar sketches incompatibles");
     }
     for (int i = 0; i < depth; i++) {
       for (int j = 0; j < width; j++) {
