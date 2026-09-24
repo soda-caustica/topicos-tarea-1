@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 
 import matplotlib.pyplot as plt
@@ -85,11 +86,23 @@ def main(argv=None):
         Ataque.DDOS: ddos_ip,
     }
 
-    for i in Ataque:
-        obtenerCsvExacto(i, ips[i])
-        for j in Sketch:
-            for k in anchos:
-                correrExperimento(i, j, k, ips[i])
+    # Los CSV exactos son independientes entre sí y deben existir antes de medir.
+    with ThreadPoolExecutor(max_workers=len(Ataque)) as executor:
+        futuros = [executor.submit(obtenerCsvExacto, ataque, ips[ataque]) for ataque in Ataque]
+        for futuro in futuros:
+            futuro.result()
+
+    # Los experimentos también son independientes entre sí.
+    trabajos = [
+        (ataque, sketch, ancho, ips[ataque])
+        for ataque in Ataque
+        for sketch in Sketch
+        for ancho in anchos
+    ]
+    with ThreadPoolExecutor(max_workers=len(trabajos)) as executor:
+        futuros = [executor.submit(correrExperimento, *trabajo) for trabajo in trabajos]
+        for futuro in futuros:
+            futuro.result()
 
     colores = {256: "#d95f02", 1024: "#1b9e77", 4096: "#7570b3"}
     estilos = {Sketch.MIN: "-", Sketch.SKETCH: "--"}
