@@ -2,6 +2,8 @@
 #ifndef COUNT_SKETCH_H
 #define COUNT_SKETCH_H
 
+
+#include "../murmurhash/MurmurHash3.h"
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
@@ -12,16 +14,22 @@ private:
   int depth;
   int width;
   int **sketch;
-  long PRIMO = 4294967387;
   uint16_t m;
   uint16_t m2;
 
-  // Definimos una familia universal de funciones hash así, funciona siempre que
-  // d < PRIMO. Es una implementacion de la primera familia universal mencionada
-  // en el articulo de familias universales.
-  // La n-esima funcion hash seria \x -> int hash(n,x).
-  long hash(long d, long clave) { return (m * clave + d) % PRIMO % width; }
-  int signHash(long d, long clave) { return (m2 * clave + d) % PRIMO % 2 == 1 ? -1 : 1; }
+  int hash(int row, uint32_t clave) {
+    uint32_t result;
+    MurmurHash3_x86_32(&clave, sizeof(clave), static_cast<uint32_t>(m) + row,
+                       &result);
+    return result % width;
+  }
+
+  int signHash(int row, uint32_t clave) {
+    uint32_t result;
+    MurmurHash3_x86_32(&clave, sizeof(clave), static_cast<uint32_t>(m2) + row,
+                       &result);
+    return (result & 1) ? -1 : 1;
+  }
 
 public:
   CountSketch(int d, int w, uint16_t m1, uint16_t m2) : depth{d}, width{w}, m{m1}, m2{m2} {

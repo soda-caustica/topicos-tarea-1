@@ -1,6 +1,7 @@
 #ifndef COUNT_MIN_H
 #define COUNT_MIN_H
 
+#include "../murmurhash/MurmurHash3.h"
 #include <cstdint>
 #include <stdexcept>
 class CountMin {
@@ -8,14 +9,14 @@ private:
   int depth;
   int width;
   int **sketch;
-  long PRIMO = 4294967387;
   uint16_t m;
 
-  // Definimos una familia universal de funciones hash así, funciona siempre que
-  // d < PRIMO. Es una implementacion de la primera familia universal mencionada
-  // en el articulo de familias universales.
-  // La n-esima funcion hash seria \x -> int hash(n,x).
-  int hash(long d, long clave) { return ((m * clave + d) % PRIMO) % width; }
+  int hash(int row, uint32_t key) {
+    uint32_t result;
+    MurmurHash3_x86_32(&key, sizeof(key), static_cast<uint32_t>(m) + row,
+                       &result);
+    return result % width;
+  }
 
 public:
   CountMin(int d, int w, uint16_t m) : depth{d}, width{w}, m{m} {

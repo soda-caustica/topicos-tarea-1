@@ -75,7 +75,7 @@ private:
 
     // Leer siguiente línea del csv exacto y obtener la columna N (índice 4)
     uint64_t N_exact = 0;
-    uint64_t f_exact = 0;
+    int64_t f_exact = 0;
     if (exacto.good()) {
       std::string line;
       if (std::getline(exacto, line)) {
