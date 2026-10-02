@@ -1,227 +1,97 @@
 #include "sketches/count_min.hpp"
+#include "sketches/sliding_window.hpp"
+
 #include <arpa/inet.h>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
-#include <ios>
 #include <iostream>
-#include <netinet/in.h>
-#include <sstream>
+#include <memory>
+#include <stdexcept>
 #include <string>
 
-class Detector_Min {
-private:
-  struct Paquete {
-    uint64_t ts_us;
-    uint32_t src;
-    uint32_t dst;
-    uint16_t sport;
-    uint16_t dport;
-    uint16_t len;
-    uint8_t proto;
-    uint8_t flags;
-  };
-  static const int NUM_SUBVENTANAS = 6;
-  static const int TAMAÑO_SUBVENTANA = 10000000; // 10 segundos
-  CountMin *sketch_principal;
-  CountMin *subsketches[NUM_SUBVENTANAS];
-  int contadores[NUM_SUBVENTANAS] = {0};
-  uint64_t t0 = 0;
-  uint64_t inicioRanura = 0;
-  uint32_t ip;
-  char ranuraActual = 0;
-  std::ifstream &input;
-  std::ofstream &output;
-  std::ifstream &exacto; // stream con resultados exactos (csv)
-  Paquete paqueteActual = {};
-  bool ddos;
-  uint64_t prevEstimate = 0;
-
-  int obtenerPaquete() {
-    if (input.read((char *)&(paqueteActual.ts_us), 8) &&
-        input.read((char *)&(paqueteActual.src), 4) &&
-        input.read((char *)&(paqueteActual.dst), 4) &&
-        input.read((char *)&(paqueteActual.sport), 2) &&
-        input.read((char *)&(paqueteActual.dport), 2) &&
-        input.read((char *)&(paqueteActual.len), 2) &&
-        input.read((char *)&(paqueteActual.proto), 1) &&
-        input.read((char *)&(paqueteActual.flags), 1))
-      return 1;
-    return 0;
-  }
-
-  void cambiarVentana() {
-    if (contadores[NUM_SUBVENTANAS - 1] ==
-        0) // Revisamos si las 6 subventanas fueron rellenadas antes de escribir
-           // los resultados
-      return;
-    escribirResultados();
-    *sketch_principal -= *subsketches[ranuraActual];
-    *subsketches[ranuraActual] *= 0;
-    contadores[ranuraActual] = 0;
-  };
-
-  void escribirResultados() {
-    uint64_t N = 0;
-    for (int i = 0; i < NUM_SUBVENTANAS; ++i) {
-      N += contadores[i];
-    }
-    uint64_t threshold = std::ceil(0.01 * double(N));
-
-    int raw_estimate = sketch_principal->get(ip);
-    uint64_t estimate = raw_estimate > 0 ? raw_estimate : 0;
-    int64_t delta =
-        static_cast<int64_t>(estimate) - static_cast<int64_t>(prevEstimate);
-
-    // Leer siguiente línea del csv exacto y obtener la columna N (índice 4)
-    uint64_t N_exact = 0;
-    uint64_t f_exact = 0;
-    if (exacto.good()) {
-      std::string line;
-      if (std::getline(exacto, line)) {
-        if (!line.empty()) {
-          std::stringstream ss(line);
-          std::string tok;
-          int col = 0;
-          while (std::getline(ss, tok, ',')) {
-            if (col == 4) {
-              try {
-                N_exact = std::stoull(tok);
-              } catch (...) {
-                N_exact = 0;
-              }
-            }
-            if (col == 6) {
-              try {
-                f_exact = std::stoull(tok);
-              } catch (...) {
-                f_exact = 0;
-              }
-              break;
-            }
-            col++;
-          }
-        }
-      }
-    }
-
-    output << ((inicioRanura - t0) / TAMAÑO_SUBVENTANA) - NUM_SUBVENTANAS << ','
-           << inicioRanura << ',' << ((double)(inicioRanura - t0) / 1e6) << ','
-           << intToIP(ip) << ',' << N << ',' << threshold << ',' << estimate
-           << ',' << revisarHH(ip, 0.01) << ',' << delta << ','
-           << (N == N_exact ? 1 : 0) << ','
-           << (f_exact > estimate ? f_exact - estimate : estimate - f_exact)
-           << ','
-           << (estimate == 0 ? 0.0
-                             : (f_exact > estimate ? f_exact - estimate
-                                                   : estimate - f_exact) /
-                                   (double)estimate)
-           << '\n';
-
-    prevEstimate = estimate;
-  }
-
-  // Se lo pedi a la IA
-  std::string intToIP(uint32_t address) {
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%u.%u.%u.%u", (address >> 24) & 0xFFu,
-                  (address >> 16) & 0xFFu, (address >> 8) & 0xFFu,
-                  address & 0xFFu);
-    return std::string(buf);
-  }
-
-public:
-  Detector_Min(int d, int w, std::ifstream &infile, std::ofstream &outfile,
-               bool ddos, uint32_t ip, std::ifstream &exacto_csv)
-      : input(infile), output(outfile), ddos(ddos), ip(ip), exacto(exacto_csv) {
-    uint16_t gen = rand() % INT16_MAX;
-    sketch_principal = new CountMin(d, w, gen);
-    for (int i = 0; i < 6; i++) {
-      subsketches[i] = new CountMin(d, w, gen);
-    }
-    if (!obtenerPaquete()) {
-      std::cout << "No se pudo leer el primer paquete";
-      exit(EXIT_FAILURE);
-    }
-    inicioRanura = paqueteActual.ts_us;
-    // Alinear comportamiento con exact_hh: exact_hh usa ventanas (t0, t0+W]
-    // por eso dejamos t0 = inicioRanura - 1 para que la primera ventana
-    // no incluya el paquete con timestamp == inicioRanura.
-    if (inicioRanura > 0)
-      t0 = inicioRanura - 1;
-    else
-      t0 = 0;
-    // descartar encabezado del csv exacto
-    std::string header;
-    if (exacto.good())
-      std::getline(exacto, header);
-
-    output << "win,tau_us,t_rel_s,key,N,threshold,estimate_f,estimate_hh,"
-              "estimate_delta,matches_exact_n,abs_err,rel_err\n";
-  }
-
-  bool procesar() {
-    if (!obtenerPaquete()) {
-      return false;
-    }
-    while (paqueteActual.ts_us > inicioRanura + TAMAÑO_SUBVENTANA) {
-      ranuraActual = (ranuraActual + 1) % NUM_SUBVENTANAS;
-      inicioRanura += TAMAÑO_SUBVENTANA;
-      cambiarVentana();
-    }
-    uint32_t ip_addr = ddos ? paqueteActual.dst : paqueteActual.src;
-    sketch_principal->count(ip_addr);
-    subsketches[ranuraActual]->count(ip_addr);
-    contadores[ranuraActual]++;
-    return true;
-  }
-
-  int revisarHH(uint32_t ip, float phi) {
-    int sum = 0;
-    for (int i = 0; i < NUM_SUBVENTANAS; i++) {
-      sum += contadores[i];
-    }
-    sum = ceil(phi * (double)sum);
-    return sketch_principal->get(ip) > sum;
-  }
-};
-
-// se lo pedi a la IA
-uint32_t ip_to_u32(const char *ip) {
+static uint32_t ip_to_u32(const char *ip_str) {
   struct in_addr addr;
-  if (inet_pton(AF_INET, ip, &addr) != 1) {
-    throw std::invalid_argument("Invalid IPv4 address");
+  if (inet_pton(AF_INET, ip_str, &addr) != 1) {
+    throw std::invalid_argument("Direccion IPv4 invalida: " + std::string(ip_str));
   }
-  return ntohl(addr.s_addr); // convert network byte order to host order
+  return ntohl(addr.s_addr);
 }
 
 int main(int argc, char **argv) {
-  srand (time(NULL));
-  if (argc != 8) {
-    std::cout << "Uso: " << argv[0]
-              << " <traza> <ip> <d> <w> <0 para scan, 1 para ddos> <archivo "
-                 "con resultados exactos> <archivo "
-                 "csv para resultados>\n";
-    exit(EXIT_FAILURE);
+  if (argc < 7) {
+    std::cerr << "Uso: " << argv[0]
+              << " <traza.bin> <ip> <d> <w> <0=scan, 1=ddos> [<exact_query.csv>] <output.csv> [seed]\n"
+              << "Ejemplo con CSV exacto:\n"
+              << "  " << argv[0] << " traza_ddos.bin 222.160.209.129 5 1024 1 exact.csv out.csv 42\n"
+              << "Ejemplo autonomo:\n"
+              << "  " << argv[0] << " traza_ddos.bin 222.160.209.129 5 1024 1 out.csv 42\n";
+    return EXIT_FAILURE;
   }
-  std::ifstream traza;
-  std::ofstream csv;
-  std::ifstream exacto;
 
+  std::string traza_path = argv[1];
   uint32_t ip = ip_to_u32(argv[2]);
-  bool scan = atoi(argv[5]);
-  traza.open(argv[1], std::ios::binary | std::ios::in);
-  exacto.open(argv[6]);
-  csv.open(argv[7]);
+  int d = std::stoi(argv[3]);
+  int w = std::stoi(argv[4]);
+  bool is_ddos = (std::stoi(argv[5]) != 0);
 
-  Detector_Min det =
-      Detector_Min(atoi(argv[3]), atoi(argv[4]), traza, csv, scan, ip, exacto);
+  std::string exact_path = "";
+  std::string out_path = "";
+  uint32_t seed = 42;
 
-  while (det.procesar()) {
+  if (argc == 7) {
+    out_path = argv[6];
+  } else if (argc == 8) {
+    // Si argv[6] es "none" o "-", no hay CSV exacto y argv[7] es salida
+    std::string arg6 = argv[6];
+    if (arg6 == "none" || arg6 == "-") {
+      out_path = argv[7];
+    } else {
+      exact_path = arg6;
+      out_path = argv[7];
+    }
+  } else { // argc >= 9
+    std::string arg6 = argv[6];
+    if (arg6 != "none" && arg6 != "-") {
+      exact_path = arg6;
+    }
+    out_path = argv[7];
+    seed = static_cast<uint32_t>(std::stoul(argv[8]));
   }
-  traza.close();
-  csv.close();
-  exacto.close();
+
+  std::ifstream traza_file(traza_path, std::ios::binary);
+  if (!traza_file) {
+    std::cerr << "Error: No se pudo abrir la traza binaria: " << traza_path << "\n";
+    return EXIT_FAILURE;
+  }
+
+  std::ofstream out_file(out_path);
+  if (!out_file) {
+    std::cerr << "Error: No se pudo abrir el archivo de salida: " << out_path << "\n";
+    return EXIT_FAILURE;
+  }
+
+  std::unique_ptr<std::ifstream> exact_file;
+  if (!exact_path.empty()) {
+    exact_file = std::make_unique<std::ifstream>(exact_path);
+    if (!*exact_file) {
+      std::cerr << "Aviso: No se pudo abrir el archivo exacto: " << exact_path << ". Continuando sin ground truth.\n";
+      exact_file.reset();
+    }
+  }
+
+  CountMin prototype(d, w, seed);
+  SlidingWindowDetector<CountMin> detector(
+      prototype, ip, is_ddos, out_file, exact_file ? exact_file.get() : nullptr);
+
+  size_t mem_bytes = detector.memory_bytes();
+  std::cerr << "[Count-Min Sketch] d=" << d << ", w=" << w << ", seed=" << seed
+            << " | Memoria contadores (8 sketches persistentes + contadores): "
+            << mem_bytes << " B (" << (static_cast<double>(mem_bytes) / 1024.0) << " KB)\n";
+
+  detector.procesarTraza(traza_file);
+
+  std::cerr << "Ventanas evaluadas: " << detector.get_windows_evaluated() << "\n";
+  return EXIT_SUCCESS;
 }

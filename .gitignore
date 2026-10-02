@@ -8,3 +8,13 @@ exact_hh
 __pycache__/
 *.jpg
 *.json
+min_hh
+sketch_hh
+*.aux
+*.log
+*.out
+csv/
+!/*.jpg
+!/gt_*.json
+!/tabla_resumen.csv
+!/csv/*.csv
